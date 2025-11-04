@@ -92,7 +92,14 @@ const Index = () => {
           status: m.status,
         }));
         setMarkets(formattedMarkets);
-        if (formattedMarkets.length > 0 && !selectedMarket) {
+        
+        // Update selected market if it exists in the new data
+        if (selectedMarket) {
+          const updatedSelected = formattedMarkets.find(m => m.id === selectedMarket.id);
+          if (updatedSelected) {
+            setSelectedMarket(updatedSelected);
+          }
+        } else if (formattedMarkets.length > 0) {
           setSelectedMarket(formattedMarkets[0]);
         }
       }
@@ -101,7 +108,7 @@ const Index = () => {
 
     fetchMarkets();
 
-    // Subscribe to realtime updates
+    // Subscribe to realtime updates - only for Active markets
     const channel = supabase
       .channel('markets-changes')
       .on(
@@ -109,9 +116,11 @@ const Index = () => {
         {
           event: '*',
           schema: 'public',
-          table: 'markets'
+          table: 'markets',
+          filter: 'status=eq.Active'
         },
-        () => {
+        (payload) => {
+          console.log('Market update received:', payload.eventType);
           fetchMarkets();
         }
       )
@@ -120,7 +129,7 @@ const Index = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, selectedMarket]);
+  }, [user]);
 
   const handleCreateMarket = async (marketData: Omit<Market, 'id'>) => {
     if (!user) return;
