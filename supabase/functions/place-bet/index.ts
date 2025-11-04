@@ -104,7 +104,10 @@ Deno.serve(async (req) => {
 
     // Calculate payout based on current price
     const priceAtBet = outcome === 'A' ? parseFloat(market.price_a.toString()) : parseFloat(market.price_b.toString())
-    const potentialPayout = amount * (1 / priceAtBet)
+    const platformFeeRate = parseFloat(market.platform_fee_rate?.toString() || '0.05')
+    const grossPayout = amount * (1 / priceAtBet)
+    const platformFee = (grossPayout - amount) * platformFeeRate // Fee only on profits
+    const potentialPayout = grossPayout - platformFee
 
     // Start transaction: Update balance, create bet, update market volume
     const newBalance = currentBalance - amount
@@ -125,8 +128,8 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Create bet record
-    const { error: betError } = await supabaseClient
+    // Create bet record with platform fee
+    const { data: newBet, error: betError } = await supabaseClient
       .from('bets')
       .insert({
         market_id: marketId,
@@ -135,7 +138,10 @@ Deno.serve(async (req) => {
         amount,
         price_at_bet: priceAtBet,
         potential_payout: potentialPayout,
+        platform_fee: platformFee,
       })
+      .select()
+      .single()
 
     if (betError) {
       console.error('Error creating bet:', betError)
@@ -186,13 +192,26 @@ Deno.serve(async (req) => {
       // Market update failing is not critical, continue
     }
 
-    console.log(`Bet placed successfully: ${amount} SOL on outcome ${outcome} for market ${marketId}`)
+    // Track platform revenue
+    if (newBet && platformFee > 0) {
+      await supabaseClient
+        .from('platform_revenue')
+        .insert({
+          market_id: marketId,
+          bet_id: newBet.id,
+          fee_amount: platformFee,
+        })
+    }
+
+    console.log(`Bet placed successfully: ${amount} SOL on outcome ${outcome} for market ${marketId}, fee: ${platformFee}`)
 
     return new Response(
       JSON.stringify({
         success: true,
         newBalance,
         potentialPayout,
+        platformFee,
+        grossPayout,
         message: 'Bet placed successfully!',
       }),
       {

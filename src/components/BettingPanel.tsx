@@ -61,7 +61,8 @@ export const BettingPanel = ({ market }: BettingPanelProps) => {
 
       setIsBetting(false);
       if (data?.success) {
-        setBetMessage(`✅ Bet confirmed! ${betAmount} SOL on Outcome ${selectedOutcome}. New balance: ${data.newBalance.toFixed(2)} SOL`);
+        const feeMsg = data.platformFee > 0 ? ` (${data.platformFee.toFixed(2)} SOL fee)` : '';
+        setBetMessage(`✅ Bet confirmed! Potential payout: ${data.potentialPayout.toFixed(2)} SOL${feeMsg}`);
         // Trigger a re-fetch of user balance in parent component
         window.dispatchEvent(new CustomEvent('balance-updated'));
       } else {
@@ -74,11 +75,21 @@ export const BettingPanel = ({ market }: BettingPanelProps) => {
     }
   };
 
-  const impliedReturn = useMemo(() => {
-    if (!market) return '0.00';
+  const payoutCalculation = useMemo(() => {
+    if (!market) return { gross: '0.00', fee: '0.00', net: '0.00', profit: '0.00' };
     const price = selectedOutcome === 'A' ? market.priceA : market.priceB;
+    const platformFeeRate = 0.05; // 5% platform fee
     const grossPayout = betAmount * (1 / price);
-    return grossPayout.toFixed(2);
+    const profit = grossPayout - betAmount;
+    const platformFee = profit * platformFeeRate; // Fee only on profits
+    const netPayout = grossPayout - platformFee;
+    
+    return {
+      gross: grossPayout.toFixed(2),
+      fee: platformFee.toFixed(2),
+      net: netPayout.toFixed(2),
+      profit: profit.toFixed(2)
+    };
   }, [betAmount, selectedOutcome, market]);
 
   if (!market) {
@@ -162,9 +173,23 @@ export const BettingPanel = ({ market }: BettingPanelProps) => {
             />
           </div>
 
-          <div className="p-3 bg-muted rounded-lg flex justify-between items-center">
-            <p className="text-sm font-medium text-muted-foreground">Est. Payout (If Correct):</p>
-            <p className="text-lg font-extrabold text-primary">{impliedReturn} SOL</p>
+          <div className="p-4 bg-muted rounded-lg space-y-2 border border-border">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-muted-foreground">Gross Payout:</span>
+              <span className="font-semibold text-foreground">{payoutCalculation.gross} SOL</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-muted-foreground">Platform Fee (5% on profit):</span>
+              <span className="font-medium text-warning">-{payoutCalculation.fee} SOL</span>
+            </div>
+            <div className="h-px bg-border my-2"></div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-semibold text-foreground">Net Payout:</span>
+              <span className="text-lg font-extrabold text-primary">{payoutCalculation.net} SOL</span>
+            </div>
+            <div className="text-xs text-muted-foreground text-center mt-1">
+              Potential profit: {payoutCalculation.profit} SOL → You keep {(parseFloat(payoutCalculation.profit) - parseFloat(payoutCalculation.fee)).toFixed(2)} SOL
+            </div>
           </div>
         </div>
         

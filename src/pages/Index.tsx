@@ -230,6 +230,9 @@ const Index = () => {
         <p className="mb-2">
           Disclaimer: This is a demonstration of a Confidential Prediction Market on Solana utilizing Arcium's MPC for fair, private settlement.
         </p>
+        <p className="mb-2">
+          Platform charges a 5% fee on profits from winning bets to maintain and improve the service.
+        </p>
         <p>
           Transaction confirmations and price streams are simulated for real-time responsiveness.
         </p>

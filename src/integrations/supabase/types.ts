@@ -14,7 +14,191 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      bets: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          market_id: string
+          outcome: string
+          payout_amount: number | null
+          platform_fee: number | null
+          potential_payout: number
+          price_at_bet: number
+          settled: boolean
+          user_id: string
+          won: boolean | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          market_id: string
+          outcome: string
+          payout_amount?: number | null
+          platform_fee?: number | null
+          potential_payout: number
+          price_at_bet: number
+          settled?: boolean
+          user_id: string
+          won?: boolean | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          market_id?: string
+          outcome?: string
+          payout_amount?: number | null
+          platform_fee?: number | null
+          potential_payout?: number
+          price_at_bet?: number
+          settled?: boolean
+          user_id?: string
+          won?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bets_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bets_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      markets: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          end_time: string
+          id: string
+          outcome_a: string
+          outcome_b: string
+          platform_fee_rate: number | null
+          price_a: number
+          price_b: number
+          status: string
+          title: string
+          updated_at: string
+          volume: number
+          winning_outcome: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          end_time: string
+          id?: string
+          outcome_a: string
+          outcome_b: string
+          platform_fee_rate?: number | null
+          price_a?: number
+          price_b?: number
+          status?: string
+          title: string
+          updated_at?: string
+          volume?: number
+          winning_outcome?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          end_time?: string
+          id?: string
+          outcome_a?: string
+          outcome_b?: string
+          platform_fee_rate?: number | null
+          price_a?: number
+          price_b?: number
+          status?: string
+          title?: string
+          updated_at?: string
+          volume?: number
+          winning_outcome?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "markets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_revenue: {
+        Row: {
+          bet_id: string | null
+          collected_at: string | null
+          fee_amount: number
+          id: string
+          market_id: string | null
+        }
+        Insert: {
+          bet_id?: string | null
+          collected_at?: string | null
+          fee_amount: number
+          id?: string
+          market_id?: string | null
+        }
+        Update: {
+          bet_id?: string | null
+          collected_at?: string | null
+          fee_amount?: number
+          id?: string
+          market_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_revenue_bet_id_fkey"
+            columns: ["bet_id"]
+            isOneToOne: false
+            referencedRelation: "bets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_revenue_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          id: string
+          sol_balance: number
+          total_bets: number
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          sol_balance?: number
+          total_bets?: number
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          sol_balance?: number
+          total_bets?: number
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
