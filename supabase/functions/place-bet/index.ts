@@ -35,9 +35,9 @@ Deno.serve(async (req) => {
     // Parse request body
     const { marketId, outcome, amount } = await req.json()
 
-    if (!marketId || !outcome || !amount || amount <= 0) {
+    if (!marketId || !outcome || !amount) {
       return new Response(
-        JSON.stringify({ error: 'Invalid input: marketId, outcome, and positive amount required' }),
+        JSON.stringify({ error: 'Invalid input: marketId, outcome, and amount required' }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 400,
@@ -55,25 +55,31 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Get user profile and check balance
-    const { data: profile, error: profileError } = await supabaseClient
-      .from('profiles')
-      .select('sol_balance, total_bets')
-      .eq('id', user.id)
-      .single()
-
-    if (profileError || !profile) {
-      return new Response(JSON.stringify({ error: 'Profile not found' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 404,
+    // Call atomic transaction function to prevent race conditions
+    const { data: result, error: rpcError } = await supabaseClient
+      .rpc('place_bet_atomic', {
+        p_user_id: user.id,
+        p_market_id: marketId,
+        p_outcome: outcome,
+        p_amount: amount
       })
+
+    if (rpcError) {
+      console.error('Error calling place_bet_atomic:', rpcError)
+      return new Response(
+        JSON.stringify({ error: 'Failed to place bet' }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500,
+        }
+      )
     }
 
-    const currentBalance = parseFloat(profile.sol_balance.toString())
-    
-    if (currentBalance < amount) {
+    // Check if the function returned an error
+    if (result.error) {
+      console.log(`Bet rejected: ${result.error}`)
       return new Response(
-        JSON.stringify({ error: 'Insufficient balance' }),
+        JSON.stringify({ error: result.error }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 400,
@@ -81,137 +87,15 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Get market details
-    const { data: market, error: marketError } = await supabaseClient
-      .from('markets')
-      .select('*')
-      .eq('id', marketId)
-      .single()
-
-    if (marketError || !market) {
-      return new Response(JSON.stringify({ error: 'Market not found' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 404,
-      })
-    }
-
-    if (market.status !== 'Active') {
-      return new Response(JSON.stringify({ error: 'Market is not active' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
-      })
-    }
-
-    // Calculate payout based on current price
-    const priceAtBet = outcome === 'A' ? parseFloat(market.price_a.toString()) : parseFloat(market.price_b.toString())
-    const platformFeeRate = parseFloat(market.platform_fee_rate?.toString() || '0.05')
-    const grossPayout = amount * (1 / priceAtBet)
-    const platformFee = (grossPayout - amount) * platformFeeRate // Fee only on profits
-    const potentialPayout = grossPayout - platformFee
-
-    // Start transaction: Update balance, create bet, update market volume
-    const newBalance = currentBalance - amount
-    
-    const { error: updateBalanceError } = await supabaseClient
-      .from('profiles')
-      .update({ 
-        sol_balance: newBalance,
-        total_bets: profile.total_bets + 1
-      })
-      .eq('id', user.id)
-
-    if (updateBalanceError) {
-      console.error('Error updating balance:', updateBalanceError)
-      return new Response(JSON.stringify({ error: 'Failed to update balance' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
-      })
-    }
-
-    // Create bet record with platform fee
-    const { data: newBet, error: betError } = await supabaseClient
-      .from('bets')
-      .insert({
-        market_id: marketId,
-        user_id: user.id,
-        outcome,
-        amount,
-        price_at_bet: priceAtBet,
-        potential_payout: potentialPayout,
-        platform_fee: platformFee,
-      })
-      .select()
-      .single()
-
-    if (betError) {
-      console.error('Error creating bet:', betError)
-      // Rollback balance update
-      await supabaseClient
-        .from('profiles')
-        .update({ 
-          sol_balance: currentBalance,
-          total_bets: profile.total_bets
-        })
-        .eq('id', user.id)
-        
-      return new Response(JSON.stringify({ error: 'Failed to create bet' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
-      })
-    }
-
-    // Update market volume and slightly adjust prices based on bet
-    const currentVolume = parseFloat(market.volume.toString())
-    const newVolume = currentVolume + amount
-    
-    // Simple price update: outcome being bet on gets slightly more expensive
-    let newPriceA = parseFloat(market.price_a.toString())
-    let newPriceB = parseFloat(market.price_b.toString())
-    
-    const priceImpact = Math.min(0.02, amount / 10000) // Max 2% price impact
-    
-    if (outcome === 'A') {
-      newPriceA = Math.min(0.99, newPriceA + priceImpact)
-      newPriceB = 1 - newPriceA
-    } else {
-      newPriceB = Math.min(0.99, newPriceB + priceImpact)
-      newPriceA = 1 - newPriceB
-    }
-
-    const { error: marketUpdateError } = await supabaseClient
-      .from('markets')
-      .update({ 
-        volume: newVolume,
-        price_a: newPriceA,
-        price_b: newPriceB,
-      })
-      .eq('id', marketId)
-
-    if (marketUpdateError) {
-      console.error('Error updating market:', marketUpdateError)
-      // Market update failing is not critical, continue
-    }
-
-    // Track platform revenue
-    if (newBet && platformFee > 0) {
-      await supabaseClient
-        .from('platform_revenue')
-        .insert({
-          market_id: marketId,
-          bet_id: newBet.id,
-          fee_amount: platformFee,
-        })
-    }
-
-    console.log(`Bet placed successfully: ${amount} SOL on outcome ${outcome} for market ${marketId}, fee: ${platformFee}`)
+    console.log(`Bet placed successfully: ${amount} SOL on outcome ${outcome} for market ${marketId}`)
 
     return new Response(
       JSON.stringify({
-        success: true,
-        newBalance,
-        potentialPayout,
-        platformFee,
-        grossPayout,
+        success: result.success,
+        newBalance: result.newBalance,
+        potentialPayout: result.potentialPayout,
+        platformFee: result.platformFee,
+        grossPayout: result.grossPayout,
         message: 'Bet placed successfully!',
       }),
       {
